@@ -1,0 +1,153 @@
+include <proc/pic18f4520.h>
+#include "ssd.h"
+#include "keypad.h"
+#include "lcd.h"
+#include "adc.h"
+#include "config.h"
+#include "bits.h"
+#include "delay.h"
+
+int v, dist = 0, funcao = 0, seg = 0, min = 0, temp1;
+unsigned int tecla = 16, op = 1, disp_step = 0;
+
+void Teclado() {
+
+    if (kpRead() != tecla) {
+        tecla = kpRead();
+        if (bitTst(tecla, 1)) {
+            op = 1;
+        }
+        if (bitTst(tecla, 3)) {
+            disp_step = 0;
+            op = 2;
+        }
+        if (bitTst(tecla, 2)) {
+            disp_step = 0;
+            op = 3;
+        }
+    }
+}
+
+void FuncaoLCD() {
+
+    switch (disp_step) //liga apenas o display da vez
+    {
+        case 0:
+            lcdPosition(0, 0);
+            lcdString("Vel: ");
+            lcdPosition(1, 0);
+            lcdString("Dist: ");
+            lcdPosition(1, 8);
+            lcdString(",");
+            lcdPosition(1, 10);
+            lcdString(" Km");
+            break;
+        case 1:
+            lcdPosition(0, 5);
+            lcdChar(((v + 100) / 1000) % 10 + 48);
+            break;
+
+        case 2:
+            lcdChar(((v + 100) / 100) % 10 + 48);
+            break;
+
+        case 3:
+            lcdPosition(1, 6);
+            lcdChar(((dist / 10000) % 10 + 48));
+            break;
+
+        case 4:
+            lcdChar(((dist / 1000) % 10 + 48));
+            break;
+
+        case 5:
+            lcdPosition(1, 9);
+            lcdChar(((dist / 100) % 10 + 48));
+            break;
+
+        default:
+            disp_step = 0;
+            break;
+    }
+    disp_step++;
+}
+
+void FuncaoSSD() {
+
+    temp1++;
+    if (temp1 == 20) {
+        temp1 = 0;
+        if (op == 2) {
+            v = adcRead(0);
+            seg++;
+            dist += v / 150;
+        } else {
+            v = -1;
+        }
+
+        if (seg >= 60) {
+            seg = 0;
+            min++;
+        }
+
+        if (min >= 100) {
+            min = 0;
+        }
+
+        ssdDigit((seg % 10), 3); //1 segundo
+        ssdDigit(((seg / 10) % 10), 2); //10 segundos
+        ssdDigit((min % 10), 1); //1 minuto
+        ssdDigit(((min / 10) % 10), 0); //10 minutos
+    }
+}
+
+void main() {
+
+    kpInit();
+    lcdInit();
+    adcInit();
+    ssdInit();
+
+    for (;;) {
+
+        if (op != 1) {//ESTEIRA LIGADA
+
+            switch (funcao) {
+
+                case 1: //ATUALIZA SSD
+                    FuncaoSSD();
+                    break;
+
+                case 2: //ATUALIZA LCD
+                    FuncaoLCD();
+                    break;
+
+                case 3: //VERIFICA TECLA
+                    kpDebounce();
+                    break;
+
+                case 4:
+                    Teclado();
+                    break;
+
+                default:
+                    funcao = 0;
+            }
+            funcao++;
+            ssdUpdate();
+            tempo(8);
+
+        } else {//ESTEIRA DESLIGADA
+            kpDebounce();
+            Teclado();
+
+            lcdPosition(0, 0);
+            lcdString("Esteira         ");
+            lcdPosition(1, 0);
+            lcdString("Desligada       ");
+            dist = 0;
+            seg = 0;
+            min = 0;
+        }
+    }
+}
